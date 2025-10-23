@@ -16,7 +16,7 @@ jobs:
         run: |
           echo "🔧 Preparing Your Virtual Workspace (4 Cores • 16 GB RAM • 256 GB SSD)"
           sudo apt update -qq
-          sudo apt install -y qemu-kvm qemu-utils genisoimage wget curl unzip
+          sudo apt install -y qemu-system qemu-utils genisoimage wget curl unzip
           mkdir -p $HOME/vm
           echo "✅ Environment initialized."
 
@@ -46,20 +46,43 @@ jobs:
           ls -lh win11.qcow2
           echo "✅ Virtual disk created."
 
-      - name: 🌐 Setting Up Tailscale (Manual Auth)
+      - name: 🌐 Setting Up Tailscale (Secure Access)
         run: |
           echo "🔐 Installing Tailscale..."
           curl -fsSL https://tailscale.com/install.sh | sh
-          echo "🪄 Starting Tailscale — follow the login link below to connect this VM:"
+          echo "🔗 Launching Tailscale login (follow the link below to authenticate)..."
           sudo tailscale up --hostname=github-vm --accept-routes --ssh
-          echo "✅ Tailscale started. Once logged in, this VM will join your network."
+          echo "✅ Tailscale started."
+          sudo tailscale status
 
       - name: 🖥️ Launching Windows 11 VM
         run: |
           echo "🚀 Starting Windows 11 Virtual Machine..."
           cd $HOME/vm
-          if [ -c /dev/kvm ]; then
-            echo "💡 KVM detected → using hardware acceleration"
-            KVM_FLAG="-enable-kvm -cpu host,kvm=on"
-          else
-            echo "⚠️ KVM not available →
+          echo "💡 Using full hardware acceleration with KVM"
+          nohup sudo qemu-system-x86_64 \
+            -enable-kvm \
+            -cpu host,kvm=on \
+            -m 16G \
+            -smp 4,sockets=1,cores=4,threads=1 \
+            -drive file=win11.qcow2,format=qcow2,if=ide \
+            -cdrom win11.iso \
+            -drive file=autounattend.iso,media=cdrom,readonly=on \
+            -vga qxl \
+            -display vnc=:1 \
+            -netdev user,id=n0,hostfwd=tcp::3389-:3389 \
+            -device e1000,netdev=n0 \
+            -daemonize
+          echo "✅ Windows 11 VM is now running."
+          echo "🌐 RDP port forwarded (3389) • VNC display available (:1)."
+          echo "🔍 Checking running QEMU processes..."
+          ps aux | grep qemu
+
+      - name: ⏳ Keeping VM Active for 6 Hours
+        run: |
+          echo "🕐 Virtual Workspace active for 6 hours."
+          for i in $(seq 1 360); do
+            printf "\r⏳ Running... %02d / 360 minutes elapsed" "$i"
+            sleep 60
+          done
+          echo -e "\n💤 Session ended after 6 hours."

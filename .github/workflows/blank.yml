@@ -1,4 +1,4 @@
-name: Windows 8.1 Virtual Workspace
+name: Windows 10 21H2 Virtual Workspace
 
 on:
   workflow_dispatch:
@@ -20,20 +20,20 @@ jobs:
           mkdir -p $HOME/vm
           echo "✅ Environment initialized and ready."
 
-      - name: 💾 Downloading Windows 8.1 ISO
+      - name: 💾 Downloading Windows 10 21H2 ISO
         run: |
-          echo "📦 Downloading Windows 8.1 ISO..."
+          echo "📦 Downloading Windows 10 21H2 ISO..."
           cd $HOME/vm
-          wget -O win8.iso "https://archive.org/download/en-gb-windows-8-pro-all-in-one-2in1-with-updates-x86-x64-april-2023/en-gb-windows-8-pro-all-in-one-2in1-with-updates-x86-x64-april-2023.iso"
-          ls -lh win8.iso
-          echo "✅ Windows 8.1 ISO downloaded successfully."
+          wget -O win10.iso "https://archive.org/download/Win10_21H2_English_x64/Win10_21H2_English_x64.iso"
+          ls -lh win10.iso
+          echo "✅ Windows 10 21H2 ISO downloaded successfully."
 
       - name: 💽 Creating 256 GB Virtual Disk
         run: |
           echo "💽 Setting up 256 GB virtual drive..."
           cd $HOME/vm
-          qemu-img create -f qcow2 win8.qcow2 256G
-          ls -lh win8.qcow2
+          qemu-img create -f qcow2 win10.qcow2 256G
+          ls -lh win10.qcow2
           echo "✅ Virtual disk created."
 
       - name: 🌐 Setting Up Tailscale (Secure Access)
@@ -45,9 +45,9 @@ jobs:
           sudo tailscale status
           echo "✅ Tailscale setup complete."
 
-      - name: 🖥️ Launching Windows 8.1 VM
+      - name: 🖥️ Launching Windows 10 VM
         run: |
-          echo "🚀 Starting Windows 8.1 Virtual Machine..."
+          echo "🚀 Starting Windows 10 21H2 Virtual Machine..."
           cd $HOME/vm
           echo "💡 Using full KVM acceleration."
           nohup sudo qemu-system-x86_64 \
@@ -55,8 +55,8 @@ jobs:
             -cpu host,kvm=on \
             -m 16G \
             -smp 4,sockets=1,cores=4,threads=1 \
-            -drive file=win8.qcow2,format=qcow2,if=ide \
-            -cdrom win8.iso \
+            -drive file=win10.qcow2,format=qcow2,if=ide \
+            -cdrom win10.iso \
             -vga qxl \
             -display vnc=:1 \
             -device qemu-xhci,id=xhci \
@@ -64,7 +64,7 @@ jobs:
             -netdev user,id=n0,hostfwd=tcp::3389-:3389 \
             -device e1000,netdev=n0 \
             -daemonize
-          echo "✅ Windows 8.1 VM is running successfully."
+          echo "✅ Windows 10 VM is running successfully."
           echo "🌐 RDP port forwarded (3389) • VNC available (:1)."
           echo "🔍 QEMU process list:"
           ps aux | grep qemu

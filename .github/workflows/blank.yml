@@ -1,4 +1,4 @@
-name: Windows 11 Debug Virtual Workspace
+name: Windows 11 Virtual Workspace
 
 on:
   workflow_dispatch:
@@ -15,33 +15,31 @@ jobs:
       - name: 🧩 Initializing Environment
         run: |
           echo "🔧 Preparing Your Virtual Workspace (4 Cores • 16 GB RAM • 256 GB SSD)"
-          sudo apt update -qq
-          sudo apt install -y qemu-kvm qemu-utils genisoimage wget curl unzip
-          mkdir -p $HOME/vm
+          sudo apt update -qq >/dev/null 2>&1
+          sudo apt install -y qemu-kvm qemu-utils genisoimage wget curl unzip >/dev/null 2>&1
+          mkdir -p $HOME/vm >/dev/null 2>&1
           echo "✅ Environment initialized."
 
       - name: 💾 Downloading Windows 11 ISO
         run: |
           echo "📦 Downloading official Windows 11 image..."
           cd $HOME/vm
-          wget -O win11.iso "https://archive.org/download/windows-11-24h2-iso_202501/Win11_24H2_English_x64.iso"
+          wget -q -O win11.iso "https://archive.org/download/windows-11-24h2-iso_202501/Win11_24H2_English_x64.iso"
           echo "✅ Windows 11 ISO retrieved."
 
       - name: 📜 Creating Autounattend ISO
         run: |
           echo "🧠 Creating unattended setup configuration..."
           cd $HOME/vm
-          cp $GITHUB_WORKSPACE/.github/win/autounattend.xml ./autounattend.xml
-          ls -la  # debug: show file exists
-          genisoimage -output autounattend.iso -volid AUTOUNATTEND -joliet -rock autounattend.xml
+          cp $GITHUB_WORKSPACE/.github/win/autounattend.xml ./autounattend.xml >/dev/null 2>&1
+          genisoimage -quiet -output autounattend.iso -volid AUTOUNATTEND -joliet -rock autounattend.xml >/dev/null 2>&1
           echo "✅ Autounattend ISO ready."
 
       - name: 💽 Creating 256 GB Virtual Disk
         run: |
           echo "💽 Initializing 256 GB virtual disk..."
           cd $HOME/vm
-          qemu-img create -f qcow2 win11.qcow2 256G
-          ls -lh  # debug: verify disk creation
+          qemu-img create -f qcow2 win11.qcow2 256G >/dev/null 2>&1
           echo "✅ Virtual disk created."
 
       - name: 🌐 Setting Up Tailscale (Secure Access)
@@ -49,19 +47,25 @@ jobs:
           TAILSCALE_AUTHKEY: ${{ secrets.TAILSCALE_AUTHKEY }}
         run: |
           echo "🔐 Installing Tailscale..."
-          curl -fsSL https://tailscale.com/install.sh | sh
-          sudo tailscale up --authkey=${TAILSCALE_AUTHKEY} --hostname=github-vm --accept-routes --ssh &
+          curl -fsSL https://tailscale.com/install.sh | sh >/dev/null 2>&1
+          sudo tailscale up --authkey=${TAILSCALE_AUTHKEY} --hostname=github-vm --accept-routes --ssh >/dev/null 2>&1 &
           echo "✅ Tailscale connected."
 
       - name: 🖥️ Launching Windows 11 VM
         run: |
           echo "🚀 Starting Windows 11 Virtual Machine..."
           cd $HOME/vm
+          if [ -c /dev/kvm ]; then
+            echo "💡 KVM detected → using hardware acceleration"
+            KVM_FLAG="-enable-kvm -cpu host,kvm=on"
+          else
+            echo "⚠️ KVM not available → using software emulation"
+            KVM_FLAG="-cpu qemu64"
+          fi
           nohup qemu-system-x86_64 \
-            -enable-kvm \
+            $KVM_FLAG \
             -m 16G \
             -smp 4,sockets=1,cores=4,threads=1 \
-            -cpu host,kvm=on \
             -drive file=win11.qcow2,format=qcow2,if=ide \
             -cdrom win11.iso \
             -drive file=autounattend.iso,media=cdrom,readonly=on \
@@ -69,7 +73,7 @@ jobs:
             -display vnc=:1 \
             -netdev user,id=n0,hostfwd=tcp::3389-:3389 \
             -device e1000,netdev=n0 \
-            -daemonize
+            -daemonize >/dev/null 2>&1
           echo "✅ Windows 11 VM is now running."
           echo "🌐 RDP port forwarded (3389) • VNC display available (:1)."
 

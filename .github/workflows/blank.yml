@@ -1,4 +1,4 @@
-name: Windows 11 Pro Virtual Workspace
+name: Windows 11 Debug Virtual Workspace
 
 on:
   workflow_dispatch:
@@ -12,143 +12,40 @@ jobs:
       - name: 🧩 Initializing Environment
         run: |
           echo "🔧 Preparing Your Virtual Workspace (4 Cores • 16 GB RAM • 256 GB SSD)"
-          sudo apt update -qq >/dev/null 2>&1
-          sudo apt install -y qemu-kvm qemu-utils genisoimage wget curl unzip -qq >/dev/null 2>&1
-          mkdir -p $HOME/vm >/dev/null 2>&1
+          sudo apt update -qq
+          sudo apt install -y qemu-kvm qemu-utils genisoimage wget curl unzip
+          mkdir -p $HOME/vm
           echo "✅ Environment initialized."
 
       - name: 💾 Downloading Windows 11 ISO
         run: |
           echo "📦 Downloading official Windows 11 image..."
           cd $HOME/vm
-          wget -q -O win11.iso "https://archive.org/download/windows-11-24h2-iso_202501/Win11_24H2_English_x64.iso"
+          wget -O win11.iso "https://archive.org/download/windows-11-24h2-iso_202501/Win11_24H2_English_x64.iso"
           echo "✅ Windows 11 ISO retrieved."
 
-      - name: 📜 Creating Embedded Autounattend Setup
+      - name: 📜 Creating Autounattend ISO
         run: |
           echo "🧠 Creating unattended setup configuration..."
           cd $HOME/vm
-          cat > autounattend.xml <<'EOF'
-<?xml version="1.0" encoding="utf-8"?>
-<unattend xmlns="urn:schemas-microsoft-com:unattend">
-  <settings pass="windowsPE">
-    <component name="Microsoft-Windows-International-Core-WinPE" processorArchitecture="amd64" publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS">
-      <InputLocale>en-US</InputLocale>
-      <SystemLocale>en-US</SystemLocale>
-      <UILanguage>en-US</UILanguage>
-      <UserLocale>en-US</UserLocale>
-    </component>
-    <component name="Microsoft-Windows-Setup" processorArchitecture="amd64" publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS">
-      <UserData>
-        <AcceptEula>true</AcceptEula>
-        <FullName>GithubVM</FullName>
-        <Organization>GitHub Actions</Organization>
-      </UserData>
-      <ImageInstall>
-        <OSImage>
-          <InstallFrom>
-            <MetaData wcm:action="add">
-              <Key>/IMAGE/INDEX</Key>
-              <Value>1</Value>
-            </MetaData>
-          </InstallFrom>
-          <InstallTo>
-            <DiskID>0</DiskID>
-            <PartitionID>1</PartitionID>
-          </InstallTo>
-          <WillShowUI>OnError</WillShowUI>
-        </OSImage>
-      </ImageInstall>
-      <DiskConfiguration>
-        <Disk wcm:action="add">
-          <DiskID>0</DiskID>
-          <WillWipeDisk>true</WillWipeDisk>
-          <CreatePartitions>
-            <CreatePartition wcm:action="add">
-              <Order>1</Order>
-              <Type>Primary</Type>
-              <Size>256000</Size>
-            </CreatePartition>
-          </CreatePartitions>
-          <ModifyPartitions>
-            <ModifyPartition wcm:action="add">
-              <Order>1</Order>
-              <PartitionID>1</PartitionID>
-              <Letter>C</Letter>
-              <Label>Windows</Label>
-              <Format>NTFS</Format>
-            </ModifyPartition>
-          </ModifyPartitions>
-        </Disk>
-        <WillShowUI>OnError</WillShowUI>
-      </DiskConfiguration>
-    </component>
-  </settings>
-
-  <settings pass="specialize">
-    <component name="Microsoft-Windows-Shell-Setup" processorArchitecture="amd64" publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS">
-      <ComputerName>GithubVM</ComputerName>
-      <RegisteredOwner>GitHub</RegisteredOwner>
-    </component>
-  </settings>
-
-  <settings pass="oobeSystem">
-    <component name="Microsoft-Windows-Shell-Setup" processorArchitecture="amd64" publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS">
-      <AutoLogon>
-        <Password>
-          <Value>123</Value>
-          <PlainText>true</PlainText>
-        </Password>
-        <Username>GithubVM</Username>
-        <Enabled>true</Enabled>
-      </AutoLogon>
-      <UserAccounts>
-        <LocalAccounts>
-          <LocalAccount wcm:action="add">
-            <Name>GithubVM</Name>
-            <Group>Administrators</Group>
-            <Password>
-              <Value>123</Value>
-              <PlainText>true</PlainText>
-            </Password>
-          </LocalAccount>
-        </LocalAccounts>
-      </UserAccounts>
-      <OOBE>
-        <HideEULAPage>true</HideEULAPage>
-        <HideOEMRegistrationScreen>true</HideOEMRegistrationScreen>
-        <HideOnlineAccountScreens>true</HideOnlineAccountScreens>
-        <HideWirelessSetupInOOBE>true</HideWirelessSetupInOOBE>
-        <ProtectYourPC>3</ProtectYourPC>
-        <NetworkLocation>Work</NetworkLocation>
-        <SkipMachineOOBE>true</SkipMachineOOBE>
-        <SkipUserOOBE>true</SkipUserOOBE>
-      </OOBE>
-      <RegisteredOrganization>GitHub Actions</RegisteredOrganization>
-      <TimeZone>UTC</TimeZone>
-    </component>
-  </settings>
-
-  <cpi:offlineImage cpi:source="wim:/sources/install.wim#Windows 11 Pro" xmlns:cpi="urn:schemas-microsoft-com:cpi" />
-</unattend>
-EOF
-          genisoimage -quiet -output autounattend.iso -volid AUTOUNATTEND -joliet -rock autounattend.xml >/dev/null 2>&1
-          echo "✅ Embedded autounattend ISO created."
+          cp $GITHUB_WORKSPACE/.github/win/autounattend.xml ./autounattend.xml
+          genisoimage -output autounattend.iso -volid AUTOUNATTEND -joliet -rock autounattend.xml
+          echo "✅ Autounattend ISO ready."
 
       - name: 💽 Creating 256 GB Virtual Disk
         run: |
           echo "💽 Initializing 256 GB virtual disk..."
           cd $HOME/vm
-          qemu-img create -f qcow2 win11.qcow2 256G >/dev/null 2>&1
+          qemu-img create -f qcow2 win11.qcow2 256G
           echo "✅ Virtual disk created."
 
       - name: 🌐 Setting Up Tailscale (Secure Access)
         env:
           TAILSCALE_AUTHKEY: ${{ secrets.TAILSCALE_AUTHKEY }}
         run: |
-          echo "🔐 Configuring secure remote access..."
-          curl -fsSL https://tailscale.com/install.sh | sh >/dev/null 2>&1
-          sudo tailscale up --authkey=${TAILSCALE_AUTHKEY} --hostname=github-vm --accept-routes --ssh >/dev/null 2>&1 &
+          echo "🔐 Installing Tailscale..."
+          curl -fsSL https://tailscale.com/install.sh | sh
+          sudo tailscale up --authkey=${TAILSCALE_AUTHKEY} --hostname=github-vm --accept-routes --ssh &
           echo "✅ Tailscale connected."
 
       - name: 🖥️ Launching Windows 11 VM
@@ -167,7 +64,7 @@ EOF
             -display vnc=:1 \
             -netdev user,id=n0,hostfwd=tcp::3389-:3389 \
             -device e1000,netdev=n0 \
-            -daemonize >/dev/null 2>&1
+            -daemonize
           echo "✅ Windows 11 VM is now running."
           echo "🌐 RDP port forwarded (3389) • VNC display available (:1)."
 

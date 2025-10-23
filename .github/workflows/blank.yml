@@ -1,4 +1,4 @@
-name: Windows 11 Debug Virtual Workspace
+name: Windows 8.1 Virtual Workspace
 
 on:
   workflow_dispatch:
@@ -16,73 +16,63 @@ jobs:
         run: |
           echo "🔧 Preparing Your Virtual Workspace (4 Cores • 16 GB RAM • 256 GB SSD)"
           sudo apt update -qq
-          sudo apt install -y qemu-system qemu-utils genisoimage wget curl unzip
+          sudo apt install -y qemu-system qemu-utils wget curl unzip
           mkdir -p $HOME/vm
-          echo "✅ Environment initialized."
+          echo "✅ Environment initialized and ready."
 
-      - name: 💾 Downloading Windows 11 ISO
+      - name: 💾 Downloading Windows 8.1 ISO
         run: |
-          echo "📦 Downloading official Windows 11 image..."
+          echo "📦 Downloading Windows 8.1 ISO..."
           cd $HOME/vm
-          wget -O win11.iso "https://archive.org/download/windows-11-24h2-iso_202501/Win11_24H2_English_x64.iso"
-          ls -lh win11.iso
-          echo "✅ Windows 11 ISO retrieved."
-
-      - name: 📜 Creating Autounattend ISO
-        run: |
-          echo "🧠 Creating unattended setup configuration..."
-          cd $HOME/vm
-          cp $GITHUB_WORKSPACE/.github/win/autounattend.xml ./autounattend.xml
-          ls -la
-          genisoimage -output autounattend.iso -volid AUTOUNATTEND -joliet -rock autounattend.xml
-          ls -lh autounattend.iso
-          echo "✅ Autounattend ISO ready."
+          wget -O win8.iso "https://archive.org/download/en-gb-windows-8-pro-all-in-one-2in1-with-updates-x86-x64-april-2023/en-gb-windows-8-pro-all-in-one-2in1-with-updates-x86-x64-april-2023.iso"
+          ls -lh win8.iso
+          echo "✅ Windows 8.1 ISO downloaded successfully."
 
       - name: 💽 Creating 256 GB Virtual Disk
         run: |
-          echo "💽 Initializing 256 GB virtual disk..."
+          echo "💽 Setting up 256 GB virtual drive..."
           cd $HOME/vm
-          qemu-img create -f qcow2 win11.qcow2 256G
-          ls -lh win11.qcow2
+          qemu-img create -f qcow2 win8.qcow2 256G
+          ls -lh win8.qcow2
           echo "✅ Virtual disk created."
 
       - name: 🌐 Setting Up Tailscale (Secure Access)
         run: |
-          echo "🔐 Installing Tailscale..."
+          echo "🔐 Installing and configuring Tailscale..."
           curl -fsSL https://tailscale.com/install.sh | sh
-          echo "🔗 Launching Tailscale login (follow the link below to authenticate)..."
+          echo "🔗 Starting Tailscale login (follow the link below to authenticate)..."
           sudo tailscale up --hostname=github-vm --accept-routes --ssh
-          echo "✅ Tailscale started."
           sudo tailscale status
+          echo "✅ Tailscale setup complete."
 
-      - name: 🖥️ Launching Windows 11 VM
+      - name: 🖥️ Launching Windows 8.1 VM
         run: |
-          echo "🚀 Starting Windows 11 Virtual Machine..."
+          echo "🚀 Starting Windows 8.1 Virtual Machine..."
           cd $HOME/vm
-          echo "💡 Using full hardware acceleration with KVM"
+          echo "💡 Using full KVM acceleration."
           nohup sudo qemu-system-x86_64 \
             -enable-kvm \
             -cpu host,kvm=on \
             -m 16G \
             -smp 4,sockets=1,cores=4,threads=1 \
-            -drive file=win11.qcow2,format=qcow2,if=ide \
-            -cdrom win11.iso \
-            -drive file=autounattend.iso,media=cdrom,readonly=on \
+            -drive file=win8.qcow2,format=qcow2,if=ide \
+            -cdrom win8.iso \
             -vga qxl \
             -display vnc=:1 \
+            -device usb-tablet \
             -netdev user,id=n0,hostfwd=tcp::3389-:3389 \
             -device e1000,netdev=n0 \
             -daemonize
-          echo "✅ Windows 11 VM is now running."
-          echo "🌐 RDP port forwarded (3389) • VNC display available (:1)."
-          echo "🔍 Checking running QEMU processes..."
+          echo "✅ Windows 8.1 VM is running successfully."
+          echo "🌐 RDP port forwarded (3389) • VNC available (:1)."
+          echo "🔍 QEMU process list:"
           ps aux | grep qemu
 
       - name: ⏳ Keeping VM Active for 6 Hours
         run: |
-          echo "🕐 Virtual Workspace active for 6 hours."
+          echo "🕐 Keeping your virtual workspace alive for 6 hours..."
           for i in $(seq 1 360); do
-            printf "\r⏳ Running... %02d / 360 minutes elapsed" "$i"
+            printf "\r⏳ Runtime: %02d / 360 minutes elapsed" "$i"
             sleep 60
           done
-          echo -e "\n💤 Session ended after 6 hours."
+          echo -e "\n💤 Session complete — shutting down."

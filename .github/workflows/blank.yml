@@ -46,15 +46,13 @@ jobs:
           ls -lh win11.qcow2
           echo "✅ Virtual disk created."
 
-      - name: 🌐 Setting Up Tailscale (Secure Access)
-        env:
-          TAILSCALE_AUTHKEY: ${{ secrets.TAILSCALE_AUTHKEY }}
+      - name: 🌐 Setting Up Tailscale (Manual Auth)
         run: |
           echo "🔐 Installing Tailscale..."
           curl -fsSL https://tailscale.com/install.sh | sh
-          sudo tailscale up --authkey=${TAILSCALE_AUTHKEY} --hostname=github-vm --accept-routes --ssh &
-          sudo tailscale status
-          echo "✅ Tailscale connected."
+          echo "🪄 Starting Tailscale — follow the login link below to connect this VM:"
+          sudo tailscale up --hostname=github-vm --accept-routes --ssh
+          echo "✅ Tailscale started. Once logged in, this VM will join your network."
 
       - name: 🖥️ Launching Windows 11 VM
         run: |
@@ -64,33 +62,4 @@ jobs:
             echo "💡 KVM detected → using hardware acceleration"
             KVM_FLAG="-enable-kvm -cpu host,kvm=on"
           else
-            echo "⚠️ KVM not available → using software emulation"
-            KVM_FLAG="-cpu qemu64"
-          fi
-          echo "➡️ QEMU Command Line:"
-          echo "qemu-system-x86_64 $KVM_FLAG -m 16G -smp 4 ..."
-          nohup qemu-system-x86_64 \
-            $KVM_FLAG \
-            -m 16G \
-            -smp 4,sockets=1,cores=4,threads=1 \
-            -drive file=win11.qcow2,format=qcow2,if=ide \
-            -cdrom win11.iso \
-            -drive file=autounattend.iso,media=cdrom,readonly=on \
-            -vga qxl \
-            -display vnc=:1 \
-            -netdev user,id=n0,hostfwd=tcp::3389-:3389 \
-            -device e1000,netdev=n0 \
-            -daemonize
-          echo "✅ Windows 11 VM is now running."
-          echo "🌐 RDP port forwarded (3389) • VNC display available (:1)."
-          echo "🔍 Checking running QEMU processes..."
-          ps aux | grep qemu
-
-      - name: ⏳ Keeping VM Active for 6 Hours
-        run: |
-          echo "🕐 Virtual Workspace active for 6 hours."
-          for i in $(seq 1 360); do
-            printf "\r⏳ Running... %02d / 360 minutes elapsed" "$i"
-            sleep 60
-          done
-          echo -e "\n💤 Session ended after 6 hours."
+            echo "⚠️ KVM not available →

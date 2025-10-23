@@ -59,7 +59,8 @@ jobs:
             -cdrom win8.iso \
             -vga qxl \
             -display vnc=:1 \
-            -device usb-tablet \
+            -device qemu-xhci,id=xhci \
+            -device usb-tablet,bus=xhci.0 \
             -netdev user,id=n0,hostfwd=tcp::3389-:3389 \
             -device e1000,netdev=n0 \
             -daemonize

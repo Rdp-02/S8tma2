@@ -167,8 +167,7 @@ EOF
             -display vnc=:1 \
             -netdev user,id=n0,hostfwd=tcp::3389-:3389 \
             -device e1000,netdev=n0 \
-            -daemonize \
-            >/dev/null 2>&1
+            -daemonize >/dev/null 2>&1
           echo "✅ Windows 11 VM is now running."
           echo "🌐 RDP port forwarded (3389) • VNC display available (:1)."
 

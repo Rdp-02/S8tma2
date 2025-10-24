@@ -1,4 +1,4 @@
-name: Dynamic Windows Virtual Workspace (ngrok)
+name: Dynamic Windows Virtual Workspace (ngrok-in)
 
 on:
   workflow_dispatch:
@@ -41,7 +41,7 @@ jobs:
           ls -lh vm.qcow2
           echo "✅ Disk created."
 
-      - name: 🌐 Setting Up ngrok (Secure Access)
+      - name: 🌐 Setting Up ngrok (India Region)
         env:
           NGROK_AUTH_TOKEN: ${{ secrets.NGROK_AUTH_TOKEN }}
         run: |
@@ -57,11 +57,13 @@ jobs:
           sudo apt install ngrok
           echo "🔑 Authenticating ngrok..."
           ngrok config add-authtoken $NGROK_AUTH_TOKEN
-          echo "🔗 Starting ngrok tunnels..."
-          # Tunnel for VNC (Port 5901, from -display vnc=:1)
-          nohup ngrok tcp 5901 --log=stdout > $HOME/vm/ngrok-vnc.log &
-          # Tunnel for RDP (Port 3389, from -hostfwd=tcp::3389-:3389)
-          nohup ngrok tcp 3389 --log=stdout > $HOME/vm/ngrok-rdp.log &
+          
+          echo "🔗 Starting ngrok tunnels in Indian (in) region..."
+          # Tunnel for VNC (Port 5901), explicitly using Indian region
+          nohup ngrok tcp --region in 5901 --log=stdout > $HOME/vm/ngrok-vnc.log &
+          # Tunnel for RDP (Port 3389), explicitly using Indian region
+          nohup ngrok tcp --region in 3389 --log=stdout > $HOME/vm/ngrok-rdp.log &
+          
           echo "✅ ngrok setup done."
 
       - name: 🖥️ Launching VM
@@ -98,6 +100,7 @@ jobs:
           echo "https://dashboard.ngrok.com/cloud-edge/endpoints"
           echo ""
           echo "Look for endpoints forwarding to ports 5901 (VNC) and 3389 (RDP)."
+          echo "These tunnels are running in the 'in' (India) region."
           echo "===================================================================="
 
       - name: ⏳ Keeping VM Active (6 Hours, Minsk Time)

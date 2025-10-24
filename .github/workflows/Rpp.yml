@@ -1,0 +1,113 @@
+name: Dynamic Windows Virtual Workspace (ngrok)
+
+on:
+  workflow_dispatch:
+    inputs:
+      iso_url:
+        description: "Direct ISO link for the OS you want to install"
+        required: true
+        default: ""
+
+jobs:
+  run-vm:
+    runs-on: ubuntu-latest
+    timeout-minutes: 360 # 6 hours
+
+    steps:
+      - name: 📥 Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: 🧩 Initializing Environment
+        run: |
+          echo "🔧 Preparing Your Virtual Workspace (4 Cores • 16 GB RAM • 256 GB SSD)"
+          sudo apt update -qq
+          sudo apt install -y qemu-system qemu-utils wget curl unzip
+          mkdir -p $HOME/vm
+          echo "✅ Environment initialized."
+
+      - name: 💾 Downloading ISO
+        run: |
+          echo "📦 Downloading ISO from provided link..."
+          cd $HOME/vm
+          wget -O os.iso "${{ github.event.inputs.iso_url }}"
+          ls -lh os.iso
+          echo "✅ ISO downloaded successfully."
+
+      - name: 💽 Creating 256 GB Virtual Disk
+        run: |
+          echo "💽 Creating 256 GB disk..."
+          cd $HOME/vm
+          qemu-img create -f qcow2 vm.qcow2 256G
+          ls -lh vm.qcow2
+          echo "✅ Disk created."
+
+      - name: 🌐 Setting Up ngrok (Secure Access)
+        env:
+          NGROK_AUTH_TOKEN: ${{ secrets.NGROK_AUTH_TOKEN }}
+        run: |
+          if [ -z "$NGROK_AUTH_TOKEN" ]; then
+            echo "❌ Error: NGROK_AUTH_TOKEN secret is not set."
+            echo "Please add your ngrok authtoken as a repository secret."
+            exit 1
+          fi
+          echo "🔐 Installing ngrok..."
+          curl -s https://ngrok-agent.s3.amazonaws.com/ngrok.asc | sudo tee /etc/apt/trusted.gpg.d/ngrok.asc >/dev/null
+          echo "deb https://ngrok-agent.s3.amazonaws.com buster main" | sudo tee /etc/apt/sources.list.d/ngrok.list
+          sudo apt update
+          sudo apt install ngrok
+          echo "🔑 Authenticating ngrok..."
+          ngrok config add-authtoken $NGROK_AUTH_TOKEN
+          echo "🔗 Starting ngrok tunnels..."
+          # Tunnel for VNC (Port 5901, from -display vnc=:1)
+          nohup ngrok tcp 5901 --log=stdout > $HOME/vm/ngrok-vnc.log &
+          # Tunnel for RDP (Port 3389, from -hostfwd=tcp::3389-:3389)
+          nohup ngrok tcp 3389 --log=stdout > $HOME/vm/ngrok-rdp.log &
+          echo "✅ ngrok setup done."
+
+      - name: 🖥️ Launching VM
+        run: |
+          echo "🚀 Booting Virtual Machine..."
+          cd $HOME/vm
+          nohup sudo qemu-system-x86_64 \
+            -enable-kvm \
+            -cpu host,kvm=on \
+            -m 16G \
+            -smp 4,sockets=1,cores=4,threads=1 \
+            -drive file=vm.qcow2,format=qcow2,if=ide \
+            -cdrom os.iso \
+            -vga qxl \
+            -display vnc=:1 \
+            -device qemu-xhci,id=xhci \
+            -device usb-tablet,bus=xhci.0 \
+            -netdev user,id=n0,hostfwd=tcp::3389-:3389 \
+            -device e1000,netdev=n0 \
+            -daemonize
+          echo "✅ VM is running."
+          echo "🌐 RDP port 3389 forwarded → VNC display on :1 (Port 5901)"
+          echo "🔍 QEMU processes:"
+          ps aux | grep qemu
+
+      - name: 📋 Displaying Access Details
+        run: |
+          echo "Waiting 10s for ngrok tunnels to establish..."
+          sleep 10 # Give ngrok time to start
+          echo "===================================================================="
+          echo "✅ Your VM is running and ngrok tunnels are active."
+          echo ""
+          echo "Please check your ngrok dashboard to find your endpoints:"
+          echo "https://dashboard.ngrok.com/cloud-edge/endpoints"
+          echo ""
+          echo "Look for endpoints forwarding to ports 5901 (VNC) and 3389 (RDP)."
+          echo "===================================================================="
+
+      - name: ⏳ Keeping VM Active (6 Hours, Minsk Time)
+        run: |
+          echo "🕐 Your virtual workspace will remain active until:"
+          TZ="Europe/Minsk" date -d "+6 hours" +"%Y-%m-%d %H:%M:%S %Z"
+          echo ""
+          echo "🕒 Keeping your virtual workspace alive for 6 hours..."
+          for i in $(seq 1 360); do
+            printf "\r⏳ Runtime: %02d / 360 minutes elapsed" "$i"
+            sleep 60
+          done
+          echo -e "\n💤 Session complete — shutting down."

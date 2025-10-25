@@ -1,0 +1,293 @@
+name: Automated Windows Virtual Workspace (ngrok-in)
+
+on:
+  workflow_dispatch:
+    inputs:
+      iso_url:
+        description: "Direct ISO link for the OS you want to install (Windows 10/11)"
+        required: true
+        default: ""
+
+jobs:
+  run-vm:
+    runs-on: ubuntu-latest
+    timeout-minutes: 360  # 6 hours
+
+    steps:
+      - name: 📥 Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: 🧩 Initializing Environment
+        run: |
+          echo "🔧 Preparing Your Virtual Workspace (4 Cores • 16 GB RAM • 256 GB SSD)"
+          sudo apt update -qq
+          sudo apt install -y qemu-system qemu-utils wget curl unzip mtools genisoimage
+          mkdir -p $HOME/vm
+          echo "✅ Environment initialized."
+
+      - name: 💾 Downloading ISO
+        run: |
+          echo "📦 Downloading ISO from provided link..."
+          cd $HOME/vm
+          
+          # Validate ISO URL input
+          if [[ "${{ github.event.inputs.iso_url }}" == "" ]]; then
+            echo "❌ Error: ISO URL cannot be empty!"
+            exit 1
+          fi
+          
+          # Download ISO
+          wget -O os.iso "${{ github.event.inputs.iso_url }}"
+          
+          # Check download success
+          if [ ! -f os.iso ]; then
+            echo "❌ Error: ISO download failed. Check the URL."
+            exit 1
+          fi
+          
+          # Verify ISO size (> 2GB for Windows)
+          ISO_SIZE=$(stat -c%s os.iso)
+          if [ "$ISO_SIZE" -lt 2000000000 ]; then
+            echo "⚠️ Warning: ISO file is unusually small ($ISO_SIZE bytes). Proceeding anyway..."
+          fi
+          
+          ls -lh os.iso
+          echo "✅ ISO downloaded successfully."
+
+      - name: 💽 Creating 256 GB Virtual Disk
+        run: |
+          echo "💽 Creating 256 GB disk..."
+          cd $HOME/vm
+          qemu-img create -f qcow2 vm.qcow2 256G
+          ls -lh vm.qcow2
+          echo "✅ Disk created."
+
+      - name: 💾 Creating Automated Install Floppy
+        run: |
+          echo "🤖 Creating autounattend.xml for automated install..."
+          cd $HOME/vm
+          
+          # Universal autounattend.xml (works for Win10/11)
+          cat > autounattend.xml << 'XMLEOF'
+          <?xml version="1.0" encoding="utf-8"?>
+          <unattend xmlns="urn:schemas-microsoft-com:unattend">
+              <settings pass="windowsPE">
+                  <component name="Microsoft-Windows-International-Core-WinPE" processorArchitecture="amd64" publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS" xmlns:wcm="http://schemas.microsoft.com/WMIConfig/2002/State" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+                      <SetupUILanguage>
+                          <UILanguage>en-US</UILanguage>
+                      </SetupUILanguage>
+                      <InputLocale>en-US</InputLocale>
+                      <SystemLocale>en-US</SystemLocale>
+                      <UILanguage>en-US</UILanguage>
+                      <UserLocale>en-US</UserLocale>
+                  </component>
+                  <component name="Microsoft-Windows-Setup" processorArchitecture="amd64" publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS" xmlns:wcm="http://schemas.microsoft.com/WMIConfig/2002/State" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+                      <DiskConfiguration>
+                          <Disk wcm:action="add">
+                              <CreatePartitions>
+                                  <CreatePartition wcm:action="add">
+                                      <Order>1</Order>
+                                      <Type>Primary</Type>
+                                      <Extend>true</Extend>
+                                  </CreatePartition>
+                              </CreatePartitions>
+                              <ModifyPartitions>
+                                  <ModifyPartition wcm:action="add">
+                                      <Order>1</Order>
+                                      <PartitionID>1</PartitionID>
+                                      <Letter>C</Letter>
+                                      <Format>NTFS</Format>
+                                      <Label>Windows</Label>
+                                  </ModifyPartition>
+                              </ModifyPartitions>
+                              <DiskID>0</DiskID>
+                              <WillWipeDisk>true</WillWipeDisk>
+                          </Disk>
+                      </DiskConfiguration>
+                      <ImageInstall>
+                          <OSImage>
+                              <InstallFrom>
+                                  <MetaData wcm:action="add">
+                                      <Key>/IMAGE/NAME</Key>
+                                      <Value>*</Value>  <!-- Matches ANY Windows edition -->
+                                  </MetaData>
+                              </InstallFrom>
+                              <InstallTo>
+                                  <DiskID>0</DiskID>
+                                  <PartitionID>1</PartitionID>
+                              </InstallTo>
+                              <InstallToAvailablePartition>false</InstallToAvailablePartition>
+                          </OSImage>
+                      </ImageInstall>
+                      <UserData>
+                          <ProductKey>
+                              <Key></Key>
+                          </ProductKey>
+                          <AcceptEula>true</AcceptEula>
+                          <FullName>Admin</FullName>
+                          <Organization>GitHub</Organization>
+                      </UserData>
+                  </component>
+              </settings>
+              <settings pass="specialize">
+                  <component name="Microsoft-Windows-Shell-Setup" processorArchitecture="amd64" publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS" xmlns:wcm="http://schemas.microsoft.com/WMIConfig/2002/State" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+                      <ComputerName>GITHUB-VM</ComputerName>
+                      <TimeZone>UTC</TimeZone>
+                  </component>
+              </settings>
+              <settings pass="oobeSystem">
+                  <component name="Microsoft-Windows-Shell-Setup" processorArchitecture="amd64" publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS" xmlns:wcm="http://schemas.microsoft.com/WMIConfig/2002/State" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+                      <AutoLogon>
+                          <Password>
+                              <Value>Password123!</Value>
+                              <PlainText>true</PlainText>
+                          </Password>
+                          <Enabled>true</Enabled>
+                          <Username>Admin</Username>
+                      </AutoLogon>
+                      <OOBE>
+                          <HideEULAPage>true</HideEULAPage>
+                          <HideOEMRegistrationScreen>true</HideOEMRegistrationScreen>
+                          <HideOnlineAccountScreens>true</HideOnlineAccountScreens>
+                          <HideWirelessSetupInOOBE>true</HideWirelessSetupInOOBE>
+                          <NetworkLocation>Work</NetworkLocation>
+                          <ProtectYourPC>1</ProtectYourPC>
+                      </OOBE>
+                      <UserAccounts>
+                          <LocalAccounts>
+                              <LocalAccount wcm:action="add">
+                                  <Password>
+                                      <Value>Password123!</Value>
+                                      <PlainText>true</PlainText>
+                                  </Password>
+                                  <Description>Admin User</Description>
+                                  <DisplayName>Admin</DisplayName>
+                                  <Group>Administrators</Group>
+                                  <Name>Admin</Name>
+                              </LocalAccount>
+                          </LocalAccounts>
+                      </UserAccounts>
+                      <FirstLogonCommands>
+                          <SynchronousCommand wcm:action="add">
+                              <CommandLine>cmd /c "REG ADD &quot;HKLM\SYSTEM\CurrentControlSet\Control\Terminal Server&quot; /v fDenyTSConnections /t REG_DWORD /d 0 /f"</CommandLine>
+                              <Description>Enable RDP</Description>
+                              <Order>1</Order>
+                              <RequiresUserInput>false</RequiresUserInput>
+                          </SynchronousCommand>
+                          <SynchronousCommand wcm:action="add">
+                              <CommandLine>cmd /c "Netsh advfirewall firewall set rule group=&quot;remote desktop&quot; new enable=Yes"</CommandLine>
+                              <Description>Enable RDP Firewall Rule</Description>
+                              <Order>2</Order>
+                              <RequiresUserInput>false</RequiresUserInput>
+                          </SynchronousCommand>
+                      </FirstLogonCommands>
+                  </component>
+              </settings>
+          </unattend>
+          XMLEOF  # ← NO LEADING SPACES!
+
+          echo "💿 Creating floppy disk image..."
+          qemu-img create -f raw floppy.img 1.44M
+          mkfs.vfat floppy.img
+          mcopy -i floppy.img autounattend.xml ::/
+          echo "✅ Floppy created with answer file."
+
+      - name: 🌐 Setting Up ngrok (India Region)
+        env:
+          NGROK_AUTH_TOKEN: ${{ secrets.NGROK_AUTH_TOKEN }}
+        run: |
+          if [ -z "$NGROK_AUTH_TOKEN" ]; then
+            echo "❌ Error: NGROK_AUTH_TOKEN secret is not set."
+            echo "Please add your ngrok authtoken as a repository secret."
+            exit 1
+          fi
+          
+          echo "🔐 Installing ngrok..."
+          curl -s https://ngrok-agent.s3.amazonaws.com/ngrok.asc | sudo tee /etc/apt/trusted.gpg.d/ngrok.asc >/dev/null
+          echo "deb https://ngrok-agent.s3.amazonaws.com buster main" | sudo tee /etc/apt/sources.list.d/ngrok.list
+          sudo apt update
+          sudo apt install ngrok -y
+          
+          echo "🔑 Authenticating ngrok..."
+          ngrok config add-authtoken $NGROK_AUTH_TOKEN
+          
+          echo "🔗 Starting ngrok tunnels in Indian (in) region..."
+          ngrok tcp --region in 5901 --log=stdout > $HOME/vm/ngrok-vnc.log &
+          ngrok tcp --region in 3389 --log=stdout > $HOME/vm/ngrok-rdp.log &
+          
+          # Wait for tunnels to initialize
+          sleep 15
+          
+          # Retrieve ngrok URLs
+          export VNC_URL=$(ngrok list tun | grep 5901 | awk '{print $5}')
+          export RDP_URL=$(ngrok list tun | grep 3389 | awk '{print $5}')
+          
+          if [ -z "$VNC_URL" ] || [ -z "$RDP_URL" ]; then
+            echo "❌ Error: Failed to retrieve ngrok URLs. Check logs."
+            exit 1
+          fi
+          
+          echo "✅ ngrok setup done. URLs:"
+          echo "   VNC: $VNC_URL"
+          echo "   RDP: $RDP_URL" > $HOME/vm/ngrok_urls.txt
+
+      - name: 🖥️ Launching VM
+        run: |
+          echo "🚀 Booting Virtual Machine..."
+          cd $HOME/vm
+          
+          # Start VM with optimized settings
+          sudo qemu-system-x86_64 \
+            -enable-kvm \
+            -cpu host,kvm=on \
+            -m 16G \
+            -smp 4,sockets=1,cores=4,threads=1 \
+            -device virtio-scsi-pci,id=scsi0 \
+            -device scsi-hd,drive=vm_disk \
+            -drive name=vm.qcow2,format=qcow2,if=none,id=vm_disk \
+            -cdrom os.iso \
+            -fda floppy.img \
+            -vga qxl \
+            -display vnc=:1 \
+            -device qemu-xhci,id=xhci \
+            -device usb-tablet,bus=xhci.0 \
+            -netdev user,id=n0,hostfwd=tcp::3389-:3389 \
+            -device e1000,netdev=n0 \
+            -daemonize > vm.log 2>&1 &
+          
+          echo "✅ VM is running."
+          echo "🌐 RDP port 3389 forwarded → VNC display on :1 (Port 5901)"
+          echo "🔍 QEMU processes:"
+          ps aux | grep qemu
+
+      - name: 📋 Displaying Access Details
+        run: |
+          cat $HOME/vm/ngrok_urls.txt
+          echo "===================================================================="
+          echo "✅ Your VM is installing automatically!"
+          echo ""
+          echo "🔍 **WATCH VNC (Port 5901) BUT DO NOT CLICK ANYTHING!**"
+          echo "   - Use this to monitor the automated Windows installation."
+          echo "   - The installation will take 20-40 minutes."
+          echo ""
+          echo "🖥️ **Connect via RDP (Port 3389) after installation completes:**"
+          echo "   - User: Admin"
+          echo "   - Password: Password123!"
+          echo ""
+          echo "📌 **Find your ngrok addresses here:**"
+          echo "   $HOME/vm/ngrok_urls.txt"
+          echo "===================================================================="
+
+      - name: ⏳ Keeping VM Active (6 Hours)
+        run: |
+          echo "🕐 Your virtual workspace will remain active until:"
+          TZ="Europe/Minsk" date -d "+6 hours" +"%Y-%m-%d %H:%M:%S %Z"
+          echo ""
+          echo "🕒 Keeping your virtual workspace alive for 6 hours..."
+          
+          # Progress bar for 6 hours
+          for i in {1..360}; do
+            printf "\r⏳ Runtime: %02d / 360 minutes elapsed" "$i"
+            sleep 60
+          done
+          echo -e "\n💤 Session complete — shutting down."

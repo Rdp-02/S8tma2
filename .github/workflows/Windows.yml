@@ -101,6 +101,7 @@ jobs:
             -drive file=vm.qcow2,format=qcow2,if=ide \
             -cdrom os.iso \
             -fda floppy.img \
+            -boot order=d \
             -vga qxl \
             -display vnc=:1 \
             -device qemu-xhci,id=xhci \

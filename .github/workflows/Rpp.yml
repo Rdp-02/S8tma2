@@ -76,14 +76,14 @@ jobs:
             -drive file=vm.qcow2,format=qcow2,if=ide \
             -cdrom os.iso \
             -vga qxl \
-            -display vnc=:1 \
+            -vnc 127.0.0.1:1 \
             -device qemu-xhci,id=xhci \
             -device usb-tablet,bus=xhci.0 \
             -netdev user,id=n0 \
             -device e1000,netdev=n0 \
             -daemonize
           echo "✅ VM is running."
-          echo "🌐 VNC display on :1 (Port 5901)"
+          echo "🌐 VNC display on 127.0.0.1:5901"
           echo "🔍 QEMU processes:"
           ps aux | grep qemu
 
@@ -94,7 +94,7 @@ jobs:
           echo "===================================================================="
           echo "✅ Your VM is running and ngrok tunnel is active."
           echo ""
-          echo "Please check your ngrok dashboard to find your endpoint:"
+          echo "Please check your ngrok dashboard to find your endpoints:"
           echo "https://dashboard.ngrok.com/cloud-edge/endpoints"
           echo ""
           echo "Look for the endpoint forwarding to port 5901 (VNC)."

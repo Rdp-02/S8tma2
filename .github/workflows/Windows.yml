@@ -66,7 +66,14 @@ jobs:
             exit 1
           fi
           echo "🔐 Installing ngrok..."
+          
+          # THIS IS THE FIX: Create the directory for the apt key
+          sudo mkdir -p /etc/trusted.gpg.d/
+          
+          # Now add the key
           curl -s https://ngrok-agent.s3.amazonaws.com/ngrok.asc | sudo tee /etc/trusted.gpg.d/ngrok.asc >/dev/null
+          
+          # Continue with installation
           echo "deb https://ngrok-agent.s3.amazonaws.com buster main" | sudo tee /etc/apt/sources.list.d/ngrok.list
           sudo apt update
           sudo apt install ngrok

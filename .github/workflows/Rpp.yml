@@ -1,4 +1,4 @@
-name: Dynamic Windows Virtual Workspace (ngrok-in)
+name: Dynamic Windows Virtual Workspace (VNC Only)
 
 on:
   workflow_dispatch:
@@ -41,7 +41,7 @@ jobs:
           ls -lh vm.qcow2
           echo "✅ Disk created."
 
-      - name: 🌐 Setting Up ngrok (India Region)
+      - name: 🌐 Setting Up ngrok (India Region - VNC Only)
         env:
           NGROK_AUTH_TOKEN: ${{ secrets.NGROK_AUTH_TOKEN }}
         run: |
@@ -58,11 +58,9 @@ jobs:
           echo "🔑 Authenticating ngrok..."
           ngrok config add-authtoken $NGROK_AUTH_TOKEN
           
-          echo "🔗 Starting ngrok tunnels in Indian (in) region..."
-          # Tunnel for VNC (Port 5901), explicitly using Indian region
+          echo "🔗 Starting ngrok tunnel for VNC in Indian (in) region..."
+          # Tunnel for VNC (Port 5901)
           nohup ngrok tcp --region in 5901 --log=stdout > $HOME/vm/ngrok-vnc.log &
-          # Tunnel for RDP (Port 3389), explicitly using Indian region
-          nohup ngrok tcp --region in 3389 --log=stdout > $HOME/vm/ngrok-rdp.log &
           
           echo "✅ ngrok setup done."
 
@@ -81,11 +79,11 @@ jobs:
             -display vnc=:1 \
             -device qemu-xhci,id=xhci \
             -device usb-tablet,bus=xhci.0 \
-            -netdev user,id=n0,hostfwd=tcp::3389-:3389 \
+            -netdev user,id=n0 \
             -device e1000,netdev=n0 \
             -daemonize
           echo "✅ VM is running."
-          echo "🌐 RDP port 3389 forwarded → VNC display on :1 (Port 5901)"
+          echo "🌐 VNC display on :1 (Port 5901)"
           echo "🔍 QEMU processes:"
           ps aux | grep qemu
 
@@ -94,13 +92,13 @@ jobs:
           echo "Waiting 10s for ngrok tunnels to establish..."
           sleep 10 # Give ngrok time to start
           echo "===================================================================="
-          echo "✅ Your VM is running and ngrok tunnels are active."
+          echo "✅ Your VM is running and ngrok tunnel is active."
           echo ""
-          echo "Please check your ngrok dashboard to find your endpoints:"
+          echo "Please check your ngrok dashboard to find your endpoint:"
           echo "https://dashboard.ngrok.com/cloud-edge/endpoints"
           echo ""
-          echo "Look for endpoints forwarding to ports 5901 (VNC) and 3389 (RDP)."
-          echo "These tunnels are running in the 'in' (India) region."
+          echo "Look for the endpoint forwarding to port 5901 (VNC)."
+          echo "This tunnel is running in the 'in' (India) region."
           echo "===================================================================="
 
       - name: ⏳ Keeping VM Active (6 Hours, Minsk Time)

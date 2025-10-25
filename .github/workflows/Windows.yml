@@ -46,7 +46,7 @@ jobs:
           echo "🤖 Creating autounattend.xml for automated install..."
           cd $HOME/vm
           
-          # This XML file is now updated to select Windows 10 Pro and skip the key
+          # This command writes the XML block to a file
           cat <<'EOF' > autounattend.xml
 <?xml version="1.0" encoding="utf-8"?>
 <unattend xmlns="urn:schemas-microsoft-com:unattend">
@@ -182,5 +182,69 @@ EOF
           fi
           echo "🔐 Installing ngrok..."
           curl -s https://ngrok-agent.s3.amazonaws.com/ngrok.asc | sudo tee /etc/apt/trusted.gpg.d/ngrok.asc >/dev/null
-          echo "deb https://ngrok-agent.s3.amazonaws.com
+          echo "deb https://ngrok-agent.s3.amazonaws.com buster main" | sudo tee /etc/apt/sources.list.d/ngrok.list
+          sudo apt update
+          sudo apt install ngrok
+          echo "🔑 Authenticating ngrok..."
+          ngrok config add-authtoken $NGROK_AUTH_TOKEN
           
+          echo "🔗 Starting ngrok tunnels in Indian (in) region..."
+          nohup ngrok tcp --region in 5901 --log=stdout > $HOME/vm/ngrok-vnc.log &
+          nohup ngrok tcp --region in 3389 --log=stdout > $HOME/vm/ngrok-rdp.log &
+          
+          echo "✅ ngrok setup done."
+
+      - name: 🖥️ Launching VM
+        run: |
+          echo "🚀 Booting Virtual Machine..."
+          cd $HOME/vm
+          nohup sudo qemu-system-x86_64 \
+            -enable-kvm \
+            -cpu host,kvm=on \
+            -m 16G \
+            -smp 4,sockets=1,cores=4,threads=1 \
+            -drive file=vm.qcow2,format=qcow2,if=ide \
+            -cdrom os.iso \
+            -fda floppy.img \
+            -vga qxl \
+            -display vnc=:1 \
+            -device qemu-xhci,id=xhci \
+            -device usb-tablet,bus=xhci.0 \
+            -netdev user,id=n0,hostfwd=tcp::3389-:3389 \
+            -device e1000,netdev=n0 \
+            -daemonize
+          echo "✅ VM is running."
+          echo "🌐 RDP port 3389 forwarded → VNC display on :1 (Port 5901)"
+          echo "🔍 QEMU processes:"
+          ps aux | grep qemu
+
+      - name: 📋 Displaying Access Details
+        run: |
+          echo "Waiting 10s for ngrok tunnels to establish..."
+          sleep 10
+          echo "===================================================================="
+          echo "✅ Your VM is installing automatically!"
+          echo ""
+          echo "You can watch the automated install on VNC (port 5901)."
+          echo "!! DO NOT CLICK ANYTHING IN VNC !!"
+          echo ""
+          echo "After ~20-30 minutes, the VM will be ready."
+          echo "Connect via RDP (port 3389) with these credentials:"
+          echo "   User: Admin"
+          echo "   Pass: Password123!"
+          echo ""
+          echo "Find your ngrok addresses on your dashboard:"
+          echo "https://dashboard.ngrok.com/cloud-edge/endpoints"
+          echo "===================================================================="
+
+      - name: ⏳ Keeping VM Active (6 Hours, Minsk Time)
+        run: |
+          echo "🕐 Your virtual workspace will remain active until:"
+          TZ="Europe/Minsk" date -d "+6 hours" +"%Y-%m-%d %H:%M:%S %Z"
+          echo ""
+          echo "🕒 Keeping your virtual workspace alive for 6 hours..."
+          for i in $(seq 1 360); do
+            printf "\r⏳ Runtime: %02d / 360 minutes elapsed" "$i"
+            sleep 60
+          done
+          echo -e "\n💤 Session complete — shutting down."

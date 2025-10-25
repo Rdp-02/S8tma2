@@ -21,7 +21,8 @@ jobs:
         run: |
           echo "🔧 Preparing Your Virtual Workspace (4 Cores • 16 GB RAM • 256 GB SSD)"
           sudo apt update -qq
-          sudo apt install -y qemu-system qemu-utils wget curl unzip mtools
+          # Added 'gpg' to install list for the ngrok key
+          sudo apt install -y qemu-system qemu-utils wget curl unzip mtools gpg
           mkdir -p $HOME/vm
           echo "✅ Environment initialized."
 
@@ -67,16 +68,18 @@ jobs:
           fi
           echo "🔐 Installing ngrok..."
           
-          # THIS IS THE FIX: Create the directory for the apt key
-          sudo mkdir -p /etc/trusted.gpg.d/
-          
-          # Now add the key
-          curl -s https://ngrok-agent.s3.amazonaws.com/ngrok.asc | sudo tee /etc/trusted.gpg.d/ngrok.asc >/dev/null
-          
-          # Continue with installation
-          echo "deb https://ngrok-agent.s3.amazonaws.com buster main" | sudo tee /etc/apt/sources.list.d/ngrok.list
+          # 1. Download the key and convert it to a gpg file (modern method)
+          curl -s https://ngrok-agent.s3.amazonaws.com/ngrok.asc | \
+            sudo gpg --dearmor -o /usr/share/keyrings/ngrok-archive-keyring.gpg
+            
+          # 2. Add the repository, pointing to the new key
+          echo "deb [signed-by=/usr/share/keyrings/ngrok-archive-keyring.gpg] https://ngrok-agent.s3.amazonaws.com buster main" | \
+            sudo tee /etc/apt/sources.list.d/ngrok.list
+            
+          # 3. Update apt and install ngrok
           sudo apt update
           sudo apt install ngrok
+          
           echo "🔑 Authenticating ngrok..."
           ngrok config add-authtoken $NGROK_AUTH_TOKEN
           

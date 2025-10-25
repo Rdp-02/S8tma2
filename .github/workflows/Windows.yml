@@ -21,7 +21,6 @@ jobs:
         run: |
           echo "🔧 Preparing Your Virtual Workspace (4 Cores • 16 GB RAM • 256 GB SSD)"
           sudo apt update -qq
-          # Added 'gpg' to install list for the ngrok key
           sudo apt install -y qemu-system qemu-utils wget curl unzip mtools gpg
           mkdir -p $HOME/vm
           echo "✅ Environment initialized."
@@ -45,16 +44,10 @@ jobs:
       - name: 💾 Creating Automated Install Floppy
         run: |
           echo "💿 Creating floppy disk image in $HOME/vm..."
-          # Create the blank floppy in the VM directory
           qemu-img create -f raw $HOME/vm/floppy.img 1.44M
-          
-          # Format the floppy
           mkfs.vfat $HOME/vm/floppy.img
-          
           echo "🤖 Copying autounattend.xml from repo to floppy..."
-          # Copy the autounattend.xml (from the repo root) into the floppy image
           mcopy -i $HOME/vm/floppy.img autounattend.xml ::/
-          
           echo "✅ Floppy created with answer file."
 
       - name: 🌐 Setting Up ngrok (India Region)
@@ -67,26 +60,17 @@ jobs:
             exit 1
           fi
           echo "🔐 Installing ngrok..."
-          
-          # 1. Download the key and convert it to a gpg file (modern method)
           curl -s https://ngrok-agent.s3.amazonaws.com/ngrok.asc | \
             sudo gpg --dearmor -o /usr/share/keyrings/ngrok-archive-keyring.gpg
-            
-          # 2. Add the repository, pointing to the new key
           echo "deb [signed-by=/usr/share/keyrings/ngrok-archive-keyring.gpg] https://ngrok-agent.s3.amazonaws.com buster main" | \
             sudo tee /etc/apt/sources.list.d/ngrok.list
-            
-          # 3. Update apt and install ngrok
           sudo apt update
           sudo apt install ngrok
-          
           echo "🔑 Authenticating ngrok..."
           ngrok config add-authtoken $NGROK_AUTH_TOKEN
-          
           echo "🔗 Starting ngrok tunnels in Indian (in) region..."
           nohup ngrok tcp --region in 5901 --log=stdout > $HOME/vm/ngrok-vnc.log &
           nohup ngrok tcp --region in 3389 --log=stdout > $HOME/vm/ngrok-rdp.log &
-          
           echo "✅ ngrok setup done."
 
       - name: 🖥️ Launching VM
@@ -98,9 +82,6 @@ jobs:
             -cpu host,kvm=on \
             -m 16G \
             -smp 4,sockets=1,cores=4,threads=1 \
-            -drive file=vm.qcow2,format=qcow2,if=ide \
-            -cdrom os.iso \
-            -fda floppy.img \
             -boot order=d \
             -vga qxl \
             -display vnc=:1 \
@@ -108,6 +89,18 @@ jobs:
             -device usb-tablet,bus=xhci.0 \
             -netdev user,id=n0,hostfwd=tcp::3389-:3389 \
             -device e1000,netdev=n0 \
+            \
+            # --- START: New SATA Controller ---
+            # 1. Add the SATA controller
+            -device ich9-ahci,id=sata \
+            # 2. Attach the Hard Drive to the SATA controller
+            -drive file=vm.qcow2,format=qcow2,id=disk,if=none -device ide-hd,bus=sata.0,drive=disk \
+            # 3. Attach the CD-ROM to the SATA controller
+            -drive file=os.iso,format=raw,id=cd,if=none,media=cdrom -device ide-cd,bus=sata.1,drive=cd \
+            # 4. Attach the Floppy Drive
+            -fda floppy.img \
+            # --- END: New SATA Controller ---
+            \
             -daemonize
           echo "✅ VM is running."
           echo "🌐 RDP port 3389 forwarded → VNC display on :1 (Port 5901)"

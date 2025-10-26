@@ -21,7 +21,6 @@ jobs:
         run: |
           echo "🔧 Preparing Your Virtual Workspace (4 Cores • 16 GB RAM • 256 GB SSD)"
           sudo apt update -qq
-          # Added 'gpg' to install list for the ngrok key
           sudo apt install -y qemu-system qemu-utils wget curl unzip mtools gpg
           mkdir -p $HOME/vm
           echo "✅ Environment initialized."
@@ -91,16 +90,16 @@ jobs:
             -netdev user,id=n0,hostfwd=tcp::3389-:3389 \
             -device e1000,netdev=n0 \
             \
-            # --- START: New SATA Controller (THE FIX) ---
+            # --- START: Corrected SATA Controller (THE FIX) ---
             # 1. Add the AHCI (SATA) controller
-            -device ahci,id=ahci \
-            # 2. Attach the Hard Drive to the SATA controller (port 0)
-            -drive file=vm.qcow2,format=qcow2,id=disk,if=none -device ide-drive,bus=ahci.0,drive=disk \
-            # 3. Attach the CD-ROM to the SATA controller (port 1)
-            -drive file=os.iso,format=raw,id=cd,if=none,media=cdrom -device ide-drive,bus=ahci.1,drive=cd \
+            -device ahci,id=sata \
+            # 2. Attach the Hard Drive (as ide-hd) to the controller
+            -drive file=vm.qcow2,if=none,id=disk,format=qcow2 -device ide-hd,bus=sata.0,drive=disk \
+            # 3. Attach the CD-ROM (as ide-cd) to the controller
+            -drive file=os.iso,if=none,id=cdrom,media=cdrom -device ide-cd,bus=sata.1,drive=cdrom \
             # 4. Attach the Floppy Drive
             -fda floppy.img \
-            # --- END: New SATA Controller ---
+            # --- END: Corrected SATA Controller ---
             \
             -daemonize
           echo "✅ VM is running."

@@ -32,6 +32,7 @@ jobs:
 
       - name: ✅ Validate Inputs
         run: |
+          ADMIN_PASSWORD="${{ github.event.inputs.admin_password }}"
           if [ ${#ADMIN_PASSWORD} -lt 8 ]; then
             echo "❌ Password must be at least 8 characters"
             exit 1
@@ -39,8 +40,6 @@ jobs:
           echo "✅ Inputs validated"
           echo "Edition: ${{ github.event.inputs.windows_edition }}"
           echo "Password length: ${#ADMIN_PASSWORD}"
-        env:
-          ADMIN_PASSWORD: ${{ github.event.inputs.admin_password }}
 
       - name: 🧩 Initializing Environment
         run: |
@@ -71,32 +70,15 @@ jobs:
           echo "✅ Disk created."
 
       - name: 💾 Creating Advanced Automated Install Floppy
+        env:
+          WINDOWS_EDITION: ${{ github.event.inputs.windows_edition }}
+          ADMIN_PASSWORD: ${{ github.event.inputs.admin_password }}
         run: |
-          echo "🤖 Creating autounattend.xml for ${{ github.event.inputs.windows_edition }}..."
+          echo "🤖 Creating autounattend.xml for $WINDOWS_EDITION..."
           cd $HOME/vm
           
-          python3 << 'PYTHON'
-import base64
-import sys
-
-# Get environment variables
-windows_edition = "${{ github.event.inputs.windows_edition }}"
-admin_password = "${{ github.event.inputs.admin_password }}"
-
-# Map edition to Windows image name
-edition_map = {
-    "Windows 10 Pro": "Windows 10 Pro",
-    "Windows 10 Home": "Windows 10 Home",
-    "Windows 11 Pro": "Windows 11 Pro",
-    "Windows 11 Home": "Windows 11 Home"
-}
-
-image_name = edition_map.get(windows_edition, "Windows 10 Pro")
-
-# Encode password for XML (base64)
-password_encoded = base64.b64encode(admin_password.encode('utf-16-le')).decode('ascii')
-
-xml_content = f'''<?xml version="1.0" encoding="utf-8"?>
+          cat > autounattend.xml << 'XMLEOF'
+<?xml version="1.0" encoding="utf-8"?>
 <unattend xmlns="urn:schemas-microsoft-com:unattend">
     <settings pass="windowsPE">
         <component name="Microsoft-Windows-International-Core-WinPE" processorArchitecture="amd64" publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS" xmlns:wcm="http://schemas.microsoft.com/WMIConfig/2002/State" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
@@ -148,7 +130,7 @@ xml_content = f'''<?xml version="1.0" encoding="utf-8"?>
                     <InstallFrom>
                         <MetaData wcm:action="add">
                             <Key>/IMAGE/NAME</Key>
-                            <Value>{image_name}</Value>
+                            <Value>Windows 10 Pro</Value>
                         </MetaData>
                     </InstallFrom>
                     <InstallTo>
@@ -184,7 +166,7 @@ xml_content = f'''<?xml version="1.0" encoding="utf-8"?>
         <component name="Microsoft-Windows-Shell-Setup" processorArchitecture="amd64" publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS" xmlns:wcm="http://schemas.microsoft.com/WMIConfig/2002/State" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
             <AutoLogon>
                 <Password>
-                    <Value>{admin_password}</Value>
+                    <Value>Password123!</Value>
                     <PlainText>true</PlainText>
                 </Password>
                 <Enabled>true</Enabled>
@@ -205,7 +187,7 @@ xml_content = f'''<?xml version="1.0" encoding="utf-8"?>
                 <LocalAccounts>
                     <LocalAccount wcm:action="add">
                         <Password>
-                            <Value>{admin_password}</Value>
+                            <Value>Password123!</Value>
                             <PlainText>true</PlainText>
                         </Password>
                         <Description>Administrator Account</Description>
@@ -235,44 +217,56 @@ xml_content = f'''<?xml version="1.0" encoding="utf-8"?>
                     <RequiresUserInput>false</RequiresUserInput>
                 </SynchronousCommand>
                 <SynchronousCommand wcm:action="add">
-                    <CommandLine>powershell -Command "New-NetFirewallRule -DisplayName 'Allow RDP' -Direction Inbound -Protocol TCP -LocalPort 3389 -Action Allow -Profile Any"</CommandLine>
+                    <CommandLine>powershell -Command "New-NetFirewallRule -DisplayName 'Allow RDP' -Direction Inbound -Protocol TCP -LocalPort 3389 -Action Allow -Profile Any -ErrorAction SilentlyContinue"</CommandLine>
                     <Description>Enable RDP Firewall Rule</Description>
                     <Order>4</Order>
                     <RequiresUserInput>false</RequiresUserInput>
                 </SynchronousCommand>
                 <SynchronousCommand wcm:action="add">
-                    <CommandLine>powershell -Command "Get-NetAdapter | Set-NetIPInterface -Dhcp Enabled; Get-NetAdapter | Set-DnsClientServerAddress -ResetServerAddresses"</CommandLine>
-                    <Description>Enable DHCP and DNS</Description>
+                    <CommandLine>powershell -Command "Get-NetAdapter | Set-NetIPInterface -DHCP Enabled -ErrorAction SilentlyContinue; ipconfig /all"</CommandLine>
+                    <Description>Enable DHCP</Description>
                     <Order>5</Order>
-                    <RequiresUserInput>false</RequiresUserInput>
-                </SynchronousCommand>
-                <SynchronousCommand wcm:action="add">
-                    <CommandLine>powershell -Command "Disable-NetAdapterBinding -Name '*' -ComponentID ms_tcpip6"</CommandLine>
-                    <Description>Disable IPv6</Description>
-                    <Order>6</Order>
                     <RequiresUserInput>false</RequiresUserInput>
                 </SynchronousCommand>
                 <SynchronousCommand wcm:action="add">
                     <CommandLine>cmd /c "wmic useraccount where name=\"Administrator\" set PasswordExpires=FALSE"</CommandLine>
                     <Description>Disable Password Expiration</Description>
+                    <Order>6</Order>
+                    <RequiresUserInput>false</RequiresUserInput>
+                </SynchronousCommand>
+                <SynchronousCommand wcm:action="add">
+                    <CommandLine>cmd /c "netsh advfirewall firewall add rule name=\"Allow RDP\" protocol=tcp dir=in localport=3389 action=allow"</CommandLine>
+                    <Description>Firewall RDP Rule</Description>
                     <Order>7</Order>
                     <RequiresUserInput>false</RequiresUserInput>
                 </SynchronousCommand>
             </FirstLogonCommands>
         </component>
     </settings>
-</unattend>'''
+</unattend>
+XMLEOF
 
-with open('autounattend.xml', 'w') as f:
-    f.write(xml_content)
-
-print("✅ Advanced XML configuration created")
-print(f"Edition: {image_name}")
-print(f"Admin User: Administrator")
-print(f"Auto-login: Enabled")
-print(f"RDP: Will be enabled on first boot")
-PYTHON
-
+          # Update password in XML if different from default
+          if [ "$ADMIN_PASSWORD" != "Password123!" ]; then
+            sed -i "s/Password123!/$ADMIN_PASSWORD/g" autounattend.xml
+          fi
+          
+          # Update edition in XML
+          case "$WINDOWS_EDITION" in
+            "Windows 10 Pro")
+              sed -i 's/<Value>Windows 10 Pro<\/Value>/<Value>Windows 10 Pro<\/Value>/g' autounattend.xml
+              ;;
+            "Windows 10 Home")
+              sed -i 's/<Value>Windows 10 Pro<\/Value>/<Value>Windows 10 Home<\/Value>/g' autounattend.xml
+              ;;
+            "Windows 11 Pro")
+              sed -i 's/<Value>Windows 10 Pro<\/Value>/<Value>Windows 11 Pro<\/Value>/g' autounattend.xml
+              ;;
+            "Windows 11 Home")
+              sed -i 's/<Value>Windows 10 Pro<\/Value>/<Value>Windows 11 Home<\/Value>/g' autounattend.xml
+              ;;
+          esac
+          
           echo "💿 Creating floppy disk image..."
           qemu-img create -f raw floppy.img 1.44M
           sudo mkfs.vfat floppy.img
@@ -331,16 +325,15 @@ PYTHON
           
           sleep 5
           echo "✅ VM is running."
-          echo "🔍 QEMU processes:"
           ps aux | grep qemu | grep -v grep
 
       - name: 📋 Displaying Access Details
+        env:
+          WINDOWS_EDITION: ${{ github.event.inputs.windows_edition }}
+          ADMIN_PASSWORD: ${{ github.event.inputs.admin_password }}
         run: |
           echo "⏳ Waiting 20 seconds for ngrok tunnels to establish..."
           sleep 20
-          
-          ADMIN_PASS="${{ github.event.inputs.admin_password }}"
-          EDITION="${{ github.event.inputs.windows_edition }}"
           
           echo ""
           echo "======================================================================"
@@ -348,7 +341,7 @@ PYTHON
           echo "======================================================================"
           echo ""
           echo "📦 INSTALLATION DETAILS:"
-          echo "   • Edition: $EDITION"
+          echo "   • Edition: $WINDOWS_EDITION"
           echo "   • Installation Method: Fully Automated"
           echo "   • RDP: Auto-enabled on first boot"
           echo ""
@@ -374,26 +367,24 @@ PYTHON
           echo "   • 0-5 min: Boot and partition setup"
           echo "   • 5-15 min: Windows file extraction"
           echo "   • 15-25 min: System configuration"
-          echo "   • 25-30 min: RDP and final setup"
+          echo "   • 25-30 min: RDP setup and finalization"
           echo ""
           echo "📝 NGROK VNC LOG:"
           echo "----"
-          cat $HOME/vm/ngrok-vnc.log 2>/dev/null || echo "Not ready yet..."
+          cat $HOME/vm/ngrok-vnc.log 2>/dev/null || echo "Initializing..."
           echo ""
           echo "📝 NGROK RDP LOG:"
           echo "----"
-          cat $HOME/vm/ngrok-rdp.log 2>/dev/null || echo "Not ready yet..."
+          cat $HOME/vm/ngrok-rdp.log 2>/dev/null || echo "Initializing..."
           echo ""
           echo "======================================================================"
 
       - name: ⏳ Keeping VM Active (6 Hours)
         run: |
           echo "🕐 Starting 6-hour session timer..."
-          echo "Edition: ${{ github.event.inputs.windows_edition }}"
-          echo ""
           
           start_time=$(date +%s)
-          end_time=$((start_time + 21600))  # 6 hours in seconds
+          end_time=$((start_time + 21600))
           
           while [ $(date +%s) -lt $end_time ]; do
             current_time=$(date +%s)
@@ -408,7 +399,6 @@ PYTHON
           done
           
           echo -e "\n\n✅ 6-hour session complete!"
-          echo "🛑 Virtual workspace will now shut down..."
 
       - name: 🛑 Cleanup & Shutdown
         if: always()
@@ -428,5 +418,4 @@ PYTHON
           rm -f os.iso vm.qcow2 floppy.img autounattend.xml
           
           echo "✅ Cleanup complete"
-          echo ""
           echo "🎉 Workflow completed successfully!"

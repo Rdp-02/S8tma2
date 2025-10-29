@@ -1,4 +1,4 @@
-name: Dynamic Windows Virtual Workspace (ngrok-in)
+name: Automated Windows Virtual Workspace (ngrok-in)
 
 on:
   workflow_dispatch:
@@ -21,7 +21,8 @@ jobs:
         run: |
           echo "🔧 Preparing Your Virtual Workspace (4 Cores • 16 GB RAM • 256 GB SSD)"
           sudo apt update -qq
-          sudo apt install -y qemu-system qemu-utils wget curl unzip
+          # Added 'gpg' for the ngrok key fix
+          sudo apt install -y qemu-system qemu-utils wget curl unzip mtools gpg
           mkdir -p $HOME/vm
           echo "✅ Environment initialized."
 
@@ -41,6 +42,16 @@ jobs:
           ls -lh vm.qcow2
           echo "✅ Disk created."
 
+      - name: 💾 Creating Automated Install Floppy
+        run: |
+          echo "💿 Creating floppy disk image in $HOME/vm..."
+          qemu-img create -f raw $HOME/vm/floppy.img 1.44M
+          mkfs.vfat $HOME/vm/floppy.img
+          echo "🤖 Copying autounattend.xml from repo to floppy..."
+          # Assuming autounattend.xml is in the root of your repo
+          mcopy -i $HOME/vm/floppy.img autounattend.xml ::/
+          echo "✅ Floppy created with answer file."
+
       - name: 🌐 Setting Up ngrok (India Region)
         env:
           NGROK_AUTH_TOKEN: ${{ secrets.NGROK_AUTH_TOKEN }}
@@ -51,19 +62,28 @@ jobs:
             exit 1
           fi
           echo "🔐 Installing ngrok..."
-          curl -s https://ngrok-agent.s3.amazonaws.com/ngrok.asc | sudo tee /etc/apt/trusted.gpg.d/ngrok.asc >/dev/null
-          echo "deb https://ngrok-agent.s3.amazonaws.com buster main" | sudo tee /etc/apt/sources.list.d/ngrok.list
-          sudo apt update
-          sudo apt install ngrok
+
+          # --- START: NGROK GPG KEY FIX ---
+          # 1. Download the key and convert it to a gpg file
+          curl -s https://ngrok-agent.s3.amazonaws.com/ngrok.asc | \
+            sudo gpg --dearmor -o /usr/share/keyrings/ngrok-archive-keyring.gpg
+
+          # 2. Add the repository, pointing to the new key
+          echo "deb [signed-by=/usr/share/keyrings/ngrok-archive-keyring.gpg] https://ngrok-agent.s3.amazonaws.com buster main" | \
+            sudo tee /etc/apt/sources.list.d/ngrok.list
+
+          # 3. Update apt and install ngrok
+          sudo apt update -qq # Use -qq for less verbose output
+          sudo apt install -y ngrok
+          # --- END: NGROK GPG KEY FIX ---
+
           echo "🔑 Authenticating ngrok..."
           ngrok config add-authtoken $NGROK_AUTH_TOKEN
-          
+
           echo "🔗 Starting ngrok tunnels in Indian (in) region..."
-          # Tunnel for VNC (Port 5901), explicitly using Indian region
           nohup ngrok tcp --region in 5901 --log=stdout > $HOME/vm/ngrok-vnc.log &
-          # Tunnel for RDP (Port 3389), explicitly using Indian region
           nohup ngrok tcp --region in 3389 --log=stdout > $HOME/vm/ngrok-rdp.log &
-          
+
           echo "✅ ngrok setup done."
 
       - name: 🖥️ Launching VM
@@ -75,14 +95,21 @@ jobs:
             -cpu host,kvm=on \
             -m 16G \
             -smp 4,sockets=1,cores=4,threads=1 \
-            -drive file=vm.qcow2,format=qcow2,if=ide \
-            -cdrom os.iso \
+            -boot order=d \
             -vga qxl \
             -display vnc=:1 \
             -device qemu-xhci,id=xhci \
             -device usb-tablet,bus=xhci.0 \
             -netdev user,id=n0,hostfwd=tcp::3389-:3389 \
             -device e1000,netdev=n0 \
+            \
+            # --- START: Corrected SATA Controller (Fixes driver error) ---
+            -device ahci,id=sata \
+            -drive file=vm.qcow2,if=none,id=disk,format=qcow2 -device ide-hd,bus=sata.0,drive=disk \
+            -drive file=os.iso,if=none,id=cdrom,media=cdrom -device ide-cd,bus=sata.1,drive=cdrom \
+            -fda floppy.img \
+            # --- END: Corrected SATA Controller ---
+            \
             -daemonize
           echo "✅ VM is running."
           echo "🌐 RDP port 3389 forwarded → VNC display on :1 (Port 5901)"
@@ -92,15 +119,20 @@ jobs:
       - name: 📋 Displaying Access Details
         run: |
           echo "Waiting 10s for ngrok tunnels to establish..."
-          sleep 10 # Give ngrok time to start
+          sleep 10
           echo "===================================================================="
-          echo "✅ Your VM is running and ngrok tunnels are active."
+          echo "✅ Your VM is installing automatically!"
           echo ""
-          echo "Please check your ngrok dashboard to find your endpoints:"
+          echo "You can watch the automated install on VNC (port 5901)."
+          echo "!! DO NOT CLICK ANYTHING IN VNC !!"
+          echo ""
+          echo "After ~20-30 minutes, the VM will be ready."
+          echo "Connect via RDP (port 3389) with these credentials:"
+          echo "   User: Admin"
+          echo "   Pass: Password123!  (Or your custom password if you modify the XML)"
+          echo ""
+          echo "Find your ngrok addresses on your dashboard:"
           echo "https://dashboard.ngrok.com/cloud-edge/endpoints"
-          echo ""
-          echo "Look for endpoints forwarding to ports 5901 (VNC) and 3389 (RDP)."
-          echo "These tunnels are running in the 'in' (India) region."
           echo "===================================================================="
 
       - name: ⏳ Keeping VM Active (6 Hours, Minsk Time)

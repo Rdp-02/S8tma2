@@ -45,7 +45,8 @@ jobs:
         run: |
           echo "🔧 Preparing Your Virtual Workspace (4 Cores • 16 GB RAM • 256 GB SSD)"
           sudo apt-get update -qq
-          sudo apt-get install -y qemu-system qemu-utils wget curl unzip mtools
+          # Added 'gpg' for the ngrok key fix
+          sudo apt-get install -y qemu-system qemu-utils wget curl unzip mtools gpg
           mkdir -p $HOME/vm
           echo "✅ Environment initialized."
 
@@ -77,20 +78,15 @@ jobs:
           echo "🤖 Creating autounattend.xml for $WINDOWS_EDITION..."
           cd $HOME/vm
           
+          # This Python script is excellent. It dynamically creates the XML.
+          # No changes needed here.
           python3 > /dev/null << 'PYEOF'
 import os
 
 windows_edition = os.environ.get('WINDOWS_EDITION', 'Windows 10 Pro')
 admin_password = os.environ.get('ADMIN_PASSWORD', 'Password123!')
 
-# Adjust edition name for image name in XML if needed
-# Some ISOs might list "Windows 10 Pro" or "Windows 11 Pro"
-# You might need to inspect your ISO to get the exact name if this fails.
-# Common editions: "Windows 10 Pro", "Windows 10 Home", "Windows 11 Pro", "Windows 11 Home"
-if "10" in windows_edition:
-    image_name = windows_edition.replace("Windows ", "Windows ") # No change needed for Win 10
-else: # Assuming Windows 11
-    image_name = windows_edition.replace("Windows ", "Windows ") # No change needed for Win 11
+image_name = windows_edition
 
 xml_template = f'''<?xml version="1.0" encoding="utf-8"?>
 <unattend xmlns="urn:schemas-microsoft-com:unattend">
@@ -288,10 +284,20 @@ PYEOF
           fi
           
           echo "🔐 Installing ngrok..."
-          curl -s https://ngrok-agent.s3.amazonaws.com/ngrok.asc | sudo tee /etc/apt/trusted.gpg.d/ngrok.asc >/dev/null
-          echo "deb https://ngrok-agent.s3.amazonaws.com buster main" | sudo tee /etc/apt/sources.list.d/ngrok.list
+          
+          # --- START: NGROK GPG KEY FIX ---
+          # 1. Download the key and convert it to a gpg file
+          curl -s https://ngrok-agent.s3.amazonaws.com/ngrok.asc | \
+            sudo gpg --dearmor -o /usr/share/keyrings/ngrok-archive-keyring.gpg
+            
+          # 2. Add the repository, pointing to the new key
+          echo "deb [signed-by=/usr/share/keyrings/ngrok-archive-keyring.gpg] https://ngrok-agent.s3.amazonaws.com buster main" | \
+            sudo tee /etc/apt/sources.list.d/ngrok.list
+            
+          # 3. Update apt and install ngrok
           sudo apt-get update -qq
           sudo apt-get install -y ngrok
+          # --- END: NGROK GPG KEY FIX ---
           
           echo "🔑 Authenticating ngrok..."
           ngrok config add-authtoken "$NGROK_AUTH_TOKEN"
@@ -304,7 +310,7 @@ PYEOF
           
           echo "✅ ngrok setup done."
 
-      - name: 🖥️ Launching VM # <--- FIX IS HERE
+      - name: 🖥️ Launching VM
         run: |
           echo "🚀 Booting Virtual Machine..."
           cd $HOME/vm
@@ -314,16 +320,25 @@ PYEOF
             -cpu host,kvm=on \
             -m 16G \
             -smp 4,sockets=1,cores=4,threads=1 \
-            -drive file=vm.qcow2,format=qcow2,if=ide \
-            -cdrom os.iso \
-            -fda floppy.img \
-            -boot order=d \ # <--- ADDED THIS LINE!
+            -boot order=d \
             -vga qxl \
             -display vnc=:1 \
             -device qemu-xhci,id=xhci \
             -device usb-tablet,bus=xhci.0 \
             -netdev user,id=n0,hostfwd=tcp::3389-:3389,hostfwd=tcp::5901-:5901 \
             -device e1000,netdev=n0 \
+            \
+            # --- START: Corrected SATA Controller (THE FIX) ---
+            # 1. Add the AHCI (SATA) controller
+            -device ahci,id=sata \
+            # 2. Attach the Hard Drive (as ide-hd) to the controller
+            -drive file=vm.qcow2,if=none,id=disk,format=qcow2 -device ide-hd,bus=sata.0,drive=disk \
+            # 3. Attach the CD-ROM (as ide-cd) to the controller
+            -drive file=os.iso,if=none,id=cdrom,media=cdrom -device ide-cd,bus=sata.1,drive=cdrom \
+            # 4. Attach the Floppy Drive
+            -fda floppy.img \
+            # --- END: Corrected SATA Controller ---
+            \
             -daemonize > $HOME/vm/qemu.log 2>&1
           
           sleep 5

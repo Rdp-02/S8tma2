@@ -1,4 +1,4 @@
-name: Dynamic Windows Virtual Workspace (ngrok-in)
+name: Automated Windows Virtual Workspace (ngrok-in)
 
 on:
   workflow_dispatch:
@@ -21,7 +21,6 @@ jobs:
         run: |
           echo "🔧 Preparing Your Virtual Workspace (4 Cores • 16 GB RAM • 256 GB SSD)"
           sudo apt update -qq
-          # Added mtools and gpg
           sudo apt install -y qemu-system qemu-utils wget curl unzip mtools gpg
           mkdir -p $HOME/vm
           echo "✅ Environment initialized."
@@ -47,11 +46,9 @@ jobs:
           echo "💿 Creating floppy disk image in $HOME/vm..."
           qemu-img create -f raw $HOME/vm/floppy.img 1.44M
           mkfs.vfat $HOME/vm/floppy.img
-          
           echo "🤖 Copying .github/win/autounattend.xml from repo to floppy..."
-          # Copies your specific XML file to the root of the floppy
+          # Assuming your XML is at this path
           mcopy -i $HOME/vm/floppy.img .github/win/autounattend.xml ::/autounattend.xml
-          
           echo "✅ Floppy created with answer file."
 
       - name: 🌐 Setting Up ngrok (India Region)
@@ -64,25 +61,17 @@ jobs:
             exit 1
           fi
           echo "🔐 Installing ngrok..."
-          
-          # --- START: NGROK GPG KEY FIX ---
           curl -s https://ngrok-agent.s3.amazonaws.com/ngrok.asc | \
             sudo gpg --dearmor -o /usr/share/keyrings/ngrok-archive-keyring.gpg
-            
           echo "deb [signed-by=/usr/share/keyrings/ngrok-archive-keyring.gpg] https://ngrok-agent.s3.amazonaws.com buster main" | \
             sudo tee /etc/apt/sources.list.d/ngrok.list
-            
           sudo apt update -qq
           sudo apt install -y ngrok
-          # --- END: NGROK GPG KEY FIX ---
-          
           echo "🔑 Authenticating ngrok..."
           ngrok config add-authtoken $NGROK_AUTH_TOKEN
-          
           echo "🔗 Starting ngrok tunnels in Indian (in) region..."
           nohup ngrok tcp --region in 5901 --log=stdout > $HOME/vm/ngrok-vnc.log &
           nohup ngrok tcp --region in 3389 --log=stdout > $HOME/vm/ngrok-rdp.log &
-          
           echo "✅ ngrok setup done."
 
       - name: 🖥️ Launching VM
@@ -94,7 +83,7 @@ jobs:
             -cpu qemu64,kvm=on \
             -m 16G \
             -smp 4,sockets=1,cores=4,threads=1 \
-            -boot once=d \
+            -boot order=dc \
             -vga std \
             -display vnc=:1 \
             -device qemu-xhci,id=xhci \
@@ -102,7 +91,7 @@ jobs:
             -netdev user,id=n0,hostfwd=tcp::3389-:3389 \
             -device e1000,netdev=n0 \
             \
-            # --- Using VirtIO Disk + SATA CD (Most Stable Combo) ---
+            # --- Using VirtIO Disk + SATA CD ---
             -drive file=vm.qcow2,if=none,id=disk,format=qcow2 \
             -device virtio-blk-pci,drive=disk \
             -device ahci,id=sata \
@@ -120,7 +109,7 @@ jobs:
       - name: 📋 Displaying Access Details
         run: |
           echo "Waiting 10s for ngrok tunnels to establish..."
-          sleep 10 # Give ngrok time to start
+          sleep 10
           echo "===================================================================="
           echo "✅ Your VM is installing automatically!"
           echo "   Using .github/win/autounattend.xml"

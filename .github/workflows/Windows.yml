@@ -21,6 +21,7 @@ jobs:
         run: |
           echo "🔧 Preparing Your Virtual Workspace (4 Cores • 16 GB RAM • 256 GB SSD)"
           sudo apt update -qq
+          # Added mtools and gpg
           sudo apt install -y qemu-system qemu-utils wget curl unzip mtools gpg
           mkdir -p $HOME/vm
           echo "✅ Environment initialized."
@@ -46,9 +47,11 @@ jobs:
           echo "💿 Creating floppy disk image in $HOME/vm..."
           qemu-img create -f raw $HOME/vm/floppy.img 1.44M
           mkfs.vfat $HOME/vm/floppy.img
+          
           echo "🤖 Copying .github/win/autounattend.xml from repo to floppy..."
-          # Assuming your XML is at this path
+          # Make sure your XML file is at this path in your repo
           mcopy -i $HOME/vm/floppy.img .github/win/autounattend.xml ::/autounattend.xml
+          
           echo "✅ Floppy created with answer file."
 
       - name: 🌐 Setting Up ngrok (India Region)
@@ -89,14 +92,14 @@ jobs:
             -device qemu-xhci,id=xhci \
             -device usb-tablet,bus=xhci.0 \
             -netdev user,id=n0,hostfwd=tcp::3389-:3389 \
-            -device e1000,netdev=n0 \
+            -device e1000,netdev=n0,bootindex=-1 \
             \
             # --- Using VirtIO Disk + SATA CD ---
             -drive file=vm.qcow2,if=none,id=disk,format=qcow2 \
-            -device virtio-blk-pci,drive=disk \
+            -device virtio-blk-pci,drive=disk,bootindex=2 \
             -device ahci,id=sata \
             -drive file=os.iso,if=none,id=cdrom,media=cdrom,format=raw \
-            -device ide-cd,bus=sata.0,drive=cdrom \
+            -device ide-cd,bus=sata.0,drive=cdrom,bootindex=1 \
             -fda floppy.img \
             # --- END ---
             \

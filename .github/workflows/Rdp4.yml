@@ -254,9 +254,9 @@ jobs:
         if: ${{ github.event.inputs.connection_method == 'ngrok' }}
         run: |
           echo "Starting Ngrok tunnels for RDP, VNC, and NoMachine..."
-          nohup ngrok tcp 3389 --region=eu > ngrok_rdp.log 2>&1 &
-          nohup ngrok tcp 5900 --region=eu > ngrok_vnc.log 2>&1 &
-          nohup ngrok tcp 4000 --region=eu > ngrok_nx.log 2>&1 &
+          nohup ngrok tcp 3389 --region=in > ngrok_rdp.log 2>&1 &
+          nohup ngrok tcp 5900 --region=in > ngrok_vnc.log 2>&1 &
+          nohup ngrok tcp 4000 --region=in > ngrok_nx.log 2>&1 &
           sleep 10
           curl --silent http://127.0.0.1:4040/api/tunnels > tunnels.json
           RDP_URL=$(jq -r '.tunnels[] | select(.config.addr=="localhost:3389") | .public_url' tunnels.json)

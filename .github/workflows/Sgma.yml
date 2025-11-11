@@ -1,4 +1,4 @@
-name: "⚡ EnigMano — GCRD Automation (CRD Only)"
+name: "⚡ EnigMano — GCRD Automation"
 
 on:
   workflow_dispatch:
@@ -24,7 +24,7 @@ concurrency:
 
 jobs:
   crd-register:
-    name: "🪄 EnigMano Windows 10 - CRD Only"
+    name: "🪄 EnigMano Windows 10"
     runs-on: windows-2022
 
     env:
@@ -40,7 +40,7 @@ jobs:
         shell: pwsh
 
     steps:
-      - name: "🔧 Environment Summary & CRD Preload"
+      - name: "🔧 Environment Summary (with quiet preload)"
         run: |
           $ErrorActionPreference = 'Stop'
           $ProgressPreference = 'SilentlyContinue'
@@ -72,9 +72,13 @@ jobs:
             if ($env:RETRIES_INPUT) { try { $retries = [int]$env:RETRIES_INPUT } catch {} }
             $dlAttempts = [Math]::Max(3, $retries)
 
-            # ONLY KEEPING THE CHROME REMOTE DESKTOP HOST INSTALLER
             $assets = @(
-              @{ Url = "https://dl.google.com/edgedl/chrome-remote-desktop/chromeremotedesktophost.msi"; Name = "crdhost.msi" }
+              @{ Url = "https://dl.google.com/edgedl/chrome-remote-desktop/chromeremotedesktophost.msi"; Name = "crdhost.msi" },
+              @{ Url = "https://downloads.cloudflareclient.com/v1/download/windows/ga"; Name = "Cloudflare_WARP_x64.msi" },
+              @{ Url = "https://download.vb-audio.com/Download_CABLE/VBCABLE_Driver_Pack45.zip"; Name = "VBCABLE.zip" },
+              @{ Url = "https://code.visualstudio.com/sha/download?build=stable&os=win32-x64-user"; Name = "VisualStudio.exe" },
+              @{ Url = "https://nodejs.org/dist/v24.11.0/node-v24.11.0-x64.msi"; Name = "node-v24.msi" }
+              
             )
 
             function Download-Quiet([string]$Url,[string]$OutFile,[int]$Attempts) {
@@ -108,7 +112,6 @@ jobs:
           [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 
           try {
-            # This script is assumed to handle the CRD installation and registration
             $url = "https://gitlab.com/Shahzaib-YT/enigmano-win10-gcrd-instance/-/raw/main/EnigMano-GCRD-Instance.ps1"
             Invoke-WebRequest -Uri $url -OutFile "EnigMano-GCRD-Instance.ps1" -UseBasicParsing -TimeoutSec 120
 
@@ -124,10 +127,11 @@ jobs:
               -GateSecret ($env:EnigMano_Access_Token)
               
             Write-Host "==============================================="
-            Write-Host "🪄 EnigMano Windows 10 (CRD Setup Complete)"
+            Write-Host "🪄 EnigMano Windows 10 (Sound Enabled)"
+            Write-Host "🪄 https://www.youtube.com/@ShahzaibYT-itxsb"
+            Write-Host "🪄 Powered by: Shahzaib-YT"
             Write-Host "==============================================="
           } catch {
             Write-Error "⚠️ EnigMano-GCRD-Instance.ps1 execution error: $($_.Exception.Message)"
             exit 1
           }
-          
